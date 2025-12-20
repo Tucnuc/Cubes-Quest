@@ -1,7 +1,7 @@
-import generateLevel
+import generateLevel, json, pygame, math
 import tkinter as tk
 from PIL import Image, ImageTk
-import json
+pygame.mixer.init()
 
 # ---STATS---
 ROOMS_CLEARED = 0
@@ -16,6 +16,7 @@ ROOM = generateLevel.getRoom(6, ROOMS_CLEARED)
 
 app = tk.Tk()
 app.attributes("-fullscreen", True)
+# app.geometry("1920x1080")
 canvas = tk.Canvas(app, bg="black", highlightthickness=0)
 canvas.place(x=0, y=0, relheight=1, relwidth=1)
 
@@ -146,7 +147,7 @@ camera_y = player_y * TILE - app.winfo_height() // 2
 camera_target_x = camera_x
 camera_target_y = camera_y
 
-# ---OTHER GAME GRAPHICS---
+# ---COIN COUNTER---
 coinDisplay = tk.Frame(app, bd=0, bg=canvas["bg"])
 coinsCounter = tk.Label(coinDisplay, text="0", font=("Fixedsys", 75, "bold"), fg="white", bd=0, bg=coinDisplay["bg"])
 coinsCounter.grid(row=0, column=0, padx=20)
@@ -157,11 +158,135 @@ coinsImgLabel = tk.Label(coinDisplay, image=coinsImgTk, bd=0, bg=coinDisplay["bg
 coinsImgLabel.grid(row=0, column=1)
 
 def startGame():
+    changeMusic("music/Game.mp3")
     coinDisplay.place(relx=1.0, rely=0.0, anchor="ne", x=-20, y=20)
     draw()
     game_loop()
 
 # ---SHOP---
+buyablesData = [
+    {
+        "name": "Demolisher",
+        "desc": "Gain the ability to destroy a barricade for 3 coins.",
+        "image": Image.open("images/demolisher.png"),
+        "price": 5,
+        "id": "demolisher",
+    },
+    {
+        "name": "Extra Health",
+        "desc": "Gain 3 extra hearts. Use the fountain to gain lost hearts.",
+        "image": Image.open("images/hearts.png"),
+        "price": 20,
+        "id": "healthBoost",
+    },
+    {
+        "name": "Super Hearts",
+        "desc": "Gain 2 super hearts. Each one regenerates after 30 seconds.",
+        "image": Image.open("images/goldenHearts.png"),
+        "price": 50,
+        "id": "superHearts",
+    },
+]
+class Buyable(tk.Frame):
+    def __init__(self, master, id, goldDisplay):
+        super().__init__(master, width=310, height=510, bg="white", cursor="hand2")
+        self.pack_propagate(False)
+        self.grid(row=0, column=id)
+
+        self.id = id
+        self.name = buyablesData[self.id]["name"]
+        self.desc = buyablesData[self.id]["desc"]
+        self.image = ImageTk.PhotoImage(buyablesData[self.id]["image"].resize((300, 300), Image.LANCZOS))
+        self.price = buyablesData[self.id]["price"]
+        self.bought = False
+        if BOUGHT_UPGRADES[buyablesData[self.id]["id"]]: self.bought = True
+        self.tooltipDesc = None
+        self.tooltipPrice = None
+        self.goldDisplay = goldDisplay
+
+        self.innerCon = tk.Frame(self, width=300, height=500, bg="black")
+        self.innerCon.grid_rowconfigure((1), weight=1)
+        self.innerCon.grid_propagate(False)
+        self.innerCon.pack(pady=5)
+        self.innerCon.bind("<Enter>", self.onHover)
+        self.innerCon.bind("<Leave>", self.onUnhover)
+        self.innerCon.bind("<Button-1>", self.buying)
+
+        self.display = tk.Label(self.innerCon, image=self.image, bd=0, bg=coinDisplay["bg"])
+        self.display.grid(row=0, column=0)
+        self.name = tk.Label(self.innerCon, text=self.name, font=("Fixedsys", 30), fg="white", bd=0, bg=coinDisplay["bg"])
+        self.name.grid(row=1, column=0)
+
+    def buying(self, event):
+        global BOUGHT_UPGRADES, GOLD
+        if self.bought or self.price > GOLD: return
+        GOLD -= self.price
+        self.bought = True
+        BOUGHT_UPGRADES[buyablesData[self.id]["id"]] = True
+        if self.tooltipPrice: self.priceLabel["text"] = "Owned"
+        self.goldDisplay["text"] = GOLD
+
+    def onHover(self, event):
+        if self.tooltipDesc and self.tooltipPrice: return
+        self.tooltipDesc = tk.Frame(app, bg="black")
+        self.tooltipDesc.place(relx=0, rely=0.77)
+        tk.Label(self.tooltipDesc, text=self.desc, fg="white", bg="black",
+            font=("Fixedsys", 25), wraplength=500, justify="left"
+        ).pack(padx=40)
+
+        self.tooltipPrice = tk.Frame(app, bg="black")
+        self.tooltipPrice.place(relx=1.0, rely=0.82, anchor="ne")
+        text = f"Price: {self.price} Gold"
+        if self.bought: text = "Owned"
+        self.priceLabel = tk.Label(self.tooltipPrice, text=text, fg="white", bg="black",
+            font=("Fixedsys", 30), wraplength=500, justify="right"
+        )
+        self.priceLabel.pack(padx=40)
+
+    def onUnhover(self, event):
+        if self.tooltipDesc and self.tooltipPrice:
+            self.tooltipDesc.destroy()
+            self.tooltipPrice.destroy()
+            self.tooltipDesc = None
+            self.tooltipPrice = None
+
+def openShop():
+    global GOLD
+    changeMusic("music/Shop.mp3")
+    if COINS >= 10: GOLD = math.floor(COINS/10)
+    def closeShop():
+        shopCon.destroy()
+        goldDisplay.destroy()
+        startGame()
+    
+    shopCon = tk.Frame(app, bg=canvas["bg"], bd=0)
+    shopCon.place(x=0, y=0, relheight=1, relwidth=1)
+    shopCon.rowconfigure((0,1,2,3), weight=1)
+    shopCon.columnconfigure((0), weight=1)
+    shopCon.grid_propagate(False)
+
+    shopTitle = tk.Label(shopCon, text="Pentagon's Bazaar", font=("Fixedsys", 75, "bold"), fg="white", bd=0, bg=canvas["bg"])
+    shopTitle.place(y=80, relwidth=1)
+
+    goldDisplay = tk.Frame(app, bd=0, bg=canvas["bg"])
+    goldDisplay.place(relx=1.0, rely=0.0, anchor="ne", x=-20, y=20)
+    goldCounter = tk.Label(goldDisplay, text=GOLD, font=("Fixedsys", 75, "bold"), fg="white", bd=0, bg=goldDisplay["bg"])
+    goldCounter.grid(row=0, column=0, padx=20)
+    img_raw = Image.open("images/gold.png").resize((150, 150), Image.LANCZOS)
+    img_tk = ImageTk.PhotoImage(img_raw)
+    gold_icon_label = tk.Label(goldDisplay, image=img_tk, bd=0, bg=goldDisplay["bg"])
+    gold_icon_label.image = img_tk
+    gold_icon_label.grid(row=0, column=1)
+
+    buyablesCon = tk.Frame(shopCon, bg=canvas["bg"])
+    buyablesCon.rowconfigure((0,), weight=1)
+    buyablesCon.columnconfigure((0,1,2), weight=1)
+    buyablesCon.grid_propagate(False)
+    buyablesCon.grid(row=1, column=0, rowspan=2, sticky="nsew")
+    for i in range(3): Buyable(buyablesCon, i, goldCounter)
+
+    closeShopBtn = tk.Button(shopCon, text="Continue", font=("Fixedsys", 50, "bold"), bd=0, width=10, command=closeShop, cursor="hand2")
+    closeShopBtn.grid(row=3, column=0)
 
 # ---MENU---
 menuCon = tk.Frame(app, bg=canvas["bg"], bd=0)
@@ -220,21 +345,25 @@ class SaveButton(tk.Frame):
     def choseSaveFile(self, event):
         self.applySaveFile()
         menuCon.destroy()
-        startGame()
-
+        if self.gold > 0: openShop()
+        else: startGame()
 
 def play():
     playBtn.destroy()
-    
     savingBtnsCon = tk.Frame(menuCon, bg=canvas["bg"])
     savingBtnsCon.rowconfigure((0,1,2), weight=1)
     savingBtnsCon.columnconfigure((0), weight=1)
     savingBtnsCon.grid_propagate(False)
     savingBtnsCon.grid(row=1, column=0, rowspan=3, sticky="nsew")
-
     for i in range(3): SaveButton(savingBtnsCon, i)
 
 playBtn = tk.Button(menuCon, text="Play", font=("Fixedsys", 50, "bold"), bd=0, width=10, command=play, cursor="hand2")
 playBtn.grid(row=1, column=0, rowspan=2)
 
+def changeMusic(path):
+    pygame.mixer.music.load(path)
+    pygame.mixer.music.play(-1)
+
+changeMusic("music/Menu.mp3")
+pygame.mixer.music.set_volume(0.7)
 app.mainloop()

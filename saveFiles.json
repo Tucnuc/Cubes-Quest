@@ -1,9 +1,10 @@
 {
     "0": {
-        "gold": 10,
+        "gold": 100,
         "boughtUpgrades": {
             "demolisher": false,
-            "healthBoost": false
+            "healthBoost": false,
+            "superHearts": false
         },
         "playerColor": "#0782f4"
     },
@@ -11,7 +12,8 @@
         "gold": 0,
         "boughtUpgrades": {
             "demolisher": false,
-            "healthBoost": false
+            "healthBoost": false,
+            "superHearts": false
         },
         "playerColor": "default"
     },
@@ -19,7 +21,8 @@
         "gold": 0,
         "boughtUpgrades": {
             "demolisher": false,
-            "healthBoost": false
+            "healthBoost": false,
+            "superHearts": false
         },
         "playerColor": "default"
     }
