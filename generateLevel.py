@@ -1,7 +1,6 @@
 import random
 
 # ----SETTINGS----
-# DIMENSIONS
 MIN_WIDTH = 7
 MAX_WIDTH = 20
 MIN_HEIGHT = 5
@@ -30,7 +29,8 @@ class Room:
         self.width = random.randint(MIN_WIDTH, MAX_WIDTH)
         self.height = random.randint(MIN_HEIGHT, MAX_HEIGHT)
         self.tiles = []
-        self.coins = random.randint(1, 3)
+        self.coins = random.randint(0, 2)
+        self.superCoins = 0
     
     def generateRoom(self, doorType, roomsCleared):
         self.tiles = [
@@ -45,36 +45,51 @@ class Room:
             self.tiles[y][0] = WALL
             self.tiles[y][self.width-1] = WALL
 
-        self.placeBarricades()
+        self.placeBarricades(roomsCleared)
         self.placeSpawn()
-        self.placeCoins()
+        self.placeCoins(doorType)
         self.placeDoors(roomsCleared)
 
-    def placeBarricades(self):
-        amount = random.randint(4,10)
+    def placeBarricades(self, roomsCleared):
+        baseMin = 3
+        baseMax = 6
+
+        prog = 1 + min(roomsCleared / PEAK, 1) * 0.75
+        areaFactor = 1 + (self.width * self.height) / 3000
+
+        amount = int(random.randint(baseMin, baseMax) * prog * areaFactor)
+        amount = max(1, amount)
+
         placed = 0
         tries = 0
 
-        while placed < amount:
-            if tries > 30: return
+        while placed < amount and tries < 200:
+            tries += 1
+            width = random.randint(1, 5)
+            height = random.randint(1, 4 if width <= 3 else 2)
 
-            width = random.randint(1,5)
-            if width > 3: height = random.randint(1,2)
-            else: height = random.randint(1,4)
+            if width >= self.width - 2 or height >= self.height - 2: continue
 
-            x = random.randint(1, self.width - 2)
-            y = random.randint(1, self.height - 2)
+            max_x = self.width - width - 2
+            max_y = self.height - height - 2
 
-            if x + width >= self.width or y + height >= self.height:
-                tries += 1
-                continue
+            if max_x < 1 or max_y < 1: continue
 
+            x = random.randint(1, max_x)
+            y = random.randint(1, max_y)
+
+            ok = True
             for dy in range(height):
                 for dx in range(width):
-                    if self.tiles[y + dy][x + dx] == FLOOR:
-                        self.tiles[y + dy][x + dx] = BARRICADE
-                        placed += 1
-            tries += 1
+                    if self.tiles[y + dy][x + dx] != FLOOR:
+                        ok = False
+                        break
+                if not ok: break
+            if not ok: continue
+
+            for dy in range(height):
+                for dx in range(width): self.tiles[y + dy][x + dx] = BARRICADE
+            placed += 1
 
     def placeSpawn(self):
         while True:
@@ -84,15 +99,25 @@ class Room:
                 self.tiles[y][x] = SPAWN
                 break
 
-    def placeCoins(self):
-        placed = 0
-        while placed < self.coins:
-            x = random.randint(1, self.width-2)
-            y = random.randint(1, self.height-2)
+    def placeCoins(self, doorType):
+        if doorType == DANGER_DOOR: self.coins += 1
+        if doorType == BOSS_DOOR:
+            self.coins += random.randint(2,3)
+            self.superCoins += random.randint(1,2)
+        if doorType == TREASURE_DOOR:
+            self.coins += 4
+            self.superCoins += random.randint(2,3)
 
-            if self.tiles[y][x] == FLOOR:
-                self.tiles[y][x] = COIN
-                placed += 1
+        def placeCoins(coinAmount, coinType):
+            placed = 0
+            while placed < coinAmount:
+                x = random.randint(1, self.width-2)
+                y = random.randint(1, self.height-2)
+                if self.tiles[y][x] == FLOOR:
+                    self.tiles[y][x] = coinType
+                    placed += 1
+        placeCoins(self.coins, COIN)
+        placeCoins(self.superCoins, SUPER_COIN)
 
     def placeDoors(self, roomsCleared):
         def doorWeights(progress):

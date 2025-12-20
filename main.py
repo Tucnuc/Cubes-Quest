@@ -1,11 +1,15 @@
 import generateLevel
 import tkinter as tk
 from PIL import Image, ImageTk
+import json
 
 # ---STATS---
 ROOMS_CLEARED = 0
-HEALTH = 3
+PLAYER_COLOR = "#7e07f4"
+HEALTH = 1
 COINS = 0
+GOLD = 0
+BOUGHT_UPGRADES = {}
 TILE = 50
 CAMERA_SPEED = 0.15
 ROOM = generateLevel.getRoom(6, ROOMS_CLEARED)
@@ -41,6 +45,19 @@ def update_camera():
     camera_x += (camera_target_x - camera_x) * CAMERA_SPEED
     camera_y += (camera_target_y - camera_y) * CAMERA_SPEED
 
+def lighten(hex_color, amount=0.5):
+    hex_color = hex_color.lstrip("#")
+
+    r = int(hex_color[0:2], 16)
+    g = int(hex_color[2:4], 16)
+    b = int(hex_color[4:6], 16)
+
+    r = int(r + (255 - r) * amount)
+    g = int(g + (255 - g) * amount)
+    b = int(b + (255 - b) * amount)
+
+    return f"#{r:02x}{g:02x}{b:02x}"
+
 def draw():
     global spawn_x, spawn_y
     canvas.delete("all")
@@ -55,7 +72,7 @@ def draw():
             if num==3: # SPAWN
                 spawn_x = x*TILE
                 spawn_y = y*TILE
-                canvas.create_rectangle(sx+4,sy+4,sx+TILE-4,sy+TILE-4,fill="#07f43a")
+                canvas.create_rectangle(sx+4,sy+4,sx+TILE-4,sy+TILE-4,fill=lighten(PLAYER_COLOR))
             if num==4: canvas.create_oval(sx+4,sy+4,sx+TILE-4,sy+TILE-4,fill="#fff202") # COINS
             if num==5: canvas.create_oval(sx+4,sy+4,sx+TILE-4,sy+TILE-4,fill="#0ff3ef") # SUPER COINS
 
@@ -67,7 +84,7 @@ def draw():
 
     px = player_x*TILE - camera_x
     py = player_y*TILE - camera_y
-    canvas.create_rectangle(px+4, py+4, px+TILE-4, py+TILE-4, fill="#4522d1")
+    canvas.create_rectangle(px+4, py+4, px+TILE-4, py+TILE-4, fill=PLAYER_COLOR)
 
 def load_room(doorType):
     global ROOM, ROOMS_CLEARED, player_x, player_y
@@ -85,9 +102,10 @@ def load_room(doorType):
     camera_target_x = camera_x
     camera_target_y = camera_y
 
-def updateCoins(amount):
-    global COINS
+def updateCoins(amount, ny, nx):
+    global COINS, ROOM
     COINS += amount
+    ROOM.tiles[ny][nx] = 0
     coinsCounter["text"] = COINS
 
 def movePlayer(dx, dy):
@@ -98,8 +116,8 @@ def movePlayer(dx, dy):
     tileNumber = ROOM.tiles[ny][nx]
 
     if tileNumber == 1 or tileNumber == 2: return # WALLS
-    if tileNumber == 4: updateCoins(1) # COINS
-    if tileNumber == 5: updateCoins(3) # SUPER COINS
+    if tileNumber == 4: updateCoins(1, ny, nx) # COINS
+    if tileNumber == 5: updateCoins(3, ny, nx) # SUPER COINS
     if 6 <= tileNumber <= 10: # DOORS
         load_room(tileNumber)
         return
@@ -130,8 +148,6 @@ camera_target_y = camera_y
 
 # ---OTHER GAME GRAPHICS---
 coinDisplay = tk.Frame(app, bd=0, bg=canvas["bg"])
-coinDisplay.place(relx=1.0, rely=0.0, anchor="ne", x=-20, y=20)
-
 coinsCounter = tk.Label(coinDisplay, text="0", font=("Fixedsys", 75, "bold"), fg="white", bd=0, bg=coinDisplay["bg"])
 coinsCounter.grid(row=0, column=0, padx=20)
 
@@ -140,6 +156,85 @@ coinsImgTk = ImageTk.PhotoImage(coinsImg)
 coinsImgLabel = tk.Label(coinDisplay, image=coinsImgTk, bd=0, bg=coinDisplay["bg"])
 coinsImgLabel.grid(row=0, column=1)
 
-draw()
-game_loop()
+def startGame():
+    coinDisplay.place(relx=1.0, rely=0.0, anchor="ne", x=-20, y=20)
+    draw()
+    game_loop()
+
+# ---SHOP---
+
+# ---MENU---
+menuCon = tk.Frame(app, bg=canvas["bg"], bd=0)
+menuCon.place(x=0, y=0, relheight=1, relwidth=1)
+menuCon.rowconfigure((0,1,2,3), weight=1)
+menuCon.columnconfigure((0), weight=1)
+menuCon.grid_propagate(False)
+
+gameTitle = tk.Label(menuCon, text="Polygon Quest", font=("Fixedsys", 75, "bold"), fg="white", bd=0, bg=canvas["bg"])
+gameTitle.place(y=80, relwidth=1)
+
+class SaveButton(tk.Frame):
+    def __init__(self, master, id):
+        super().__init__(master, width=1010, height=105, bg="white", cursor="hand2")
+        self.pack_propagate(False)
+        self.grid(row=id, column=0)
+
+        self.id = id
+        self.gold = 0
+        self.player_color = PLAYER_COLOR
+        self.getSaveFile()
+    
+        self.innerCon = tk.Frame(self, width=1000, height=100, bg="black")
+        self.innerCon.grid_propagate(False)
+        self.innerCon.rowconfigure((0), weight=1)
+        self.innerCon.columnconfigure((0,1,2,3,4), weight=1)
+        self.innerCon.pack_propagate(False)
+        self.innerCon.pack()
+        self.innerCon.bind("<Button-1>", self.choseSaveFile)
+
+        self.fileName = tk.Label(self.innerCon, text=f"Save File {self.id+1}", font=("Fixedsys", 30), fg="white", bg=canvas["bg"], bd=0)
+        self.fileName.grid(row=0, column=0)
+        self.goldCounter = tk.Label(self.innerCon, text=f"Gold: {self.gold}", font=("Fixedsys", 30), fg="white", bg=canvas["bg"], bd=0)
+        self.goldCounter.grid(row=0, column=4)
+        
+        self.cubeDisplay = tk.Canvas(self.innerCon, bg=canvas["bg"], highlightthickness=0, width=35, height=35)
+        self.cubeDisplay.grid(row=0, column=1)
+        self.cubeDisplay.create_rectangle(0, 0, TILE, TILE, fill=self.player_color)
+    
+    def applySaveFile(self):
+        global GOLD, PLAYER_COLOR, BOUGHT_UPGRADES
+        with open("saveFiles.json", "r", encoding="utf-8") as f: 
+            data = json.load(f)
+        GOLD = data[str(self.id)]["gold"]
+        BOUGHT_UPGRADES = data[str(self.id)]["boughtUpgrades"]
+        if data[str(self.id)]["playerColor"] == "default": return
+        else: PLAYER_COLOR = data[str(self.id)]["playerColor"]
+
+    def getSaveFile(self):
+        with open("saveFiles.json", "r", encoding="utf-8") as f: 
+            data = json.load(f)
+        self.gold = data[str(self.id)]["gold"]
+        if data[str(self.id)]["playerColor"] == "default": return
+        else: self.player_color = data[str(self.id)]["playerColor"]
+
+    def choseSaveFile(self, event):
+        self.applySaveFile()
+        menuCon.destroy()
+        startGame()
+
+
+def play():
+    playBtn.destroy()
+    
+    savingBtnsCon = tk.Frame(menuCon, bg=canvas["bg"])
+    savingBtnsCon.rowconfigure((0,1,2), weight=1)
+    savingBtnsCon.columnconfigure((0), weight=1)
+    savingBtnsCon.grid_propagate(False)
+    savingBtnsCon.grid(row=1, column=0, rowspan=3, sticky="nsew")
+
+    for i in range(3): SaveButton(savingBtnsCon, i)
+
+playBtn = tk.Button(menuCon, text="Play", font=("Fixedsys", 50, "bold"), bd=0, width=10, command=play, cursor="hand2")
+playBtn.grid(row=1, column=0, rowspan=2)
+
 app.mainloop()
