@@ -7,6 +7,8 @@ pygame.mixer.init()
 ROOMS_CLEARED = 0
 PLAYER_COLOR = "#7e07f4"
 HEALTH = 1
+HEART_CANISTER = None
+SUPER_HEART_CANISTER = None
 COINS = 0
 GOLD = 0
 BOUGHT_UPGRADES = {}
@@ -20,11 +22,40 @@ app.attributes("-fullscreen", True)
 canvas = tk.Canvas(app, bg="black", highlightthickness=0)
 canvas.place(x=0, y=0, relheight=1, relwidth=1)
 
+def transition(location):
+    backdrop = tk.Frame(app, bd=0, bg=canvas["bg"])
+    backdrop.place(relheight=1, relwidth=1, x=0, y=0)
+    loadingMsg = tk.Label(backdrop, bg=backdrop["bg"], text="", font=("Fixedsys", 35), fg="white")
+    loadingMsg.place(relx=0, rely=1, anchor="sw", x=50, y=-50)
+
+    msg = ""
+    next_func = None
+
+    if location == "game":
+        load_room(6)
+        msg = "Starting a new journey..."
+        next_func = startGame
+    elif location == "shop":
+        msg = "Travelling to the bazaar..."
+        next_func = openShop
+    elif location == "restart":
+        msg = "All the way back to the beginning..."
+        next_func = openShop
+
+    loadingMsg["text"] = msg
+
+    def finish_transition():
+        canAnimate = False
+        backdrop.destroy()
+        if next_func:
+            next_func()
+
+    app.after(1500, finish_transition)
+
 def findSpawn():
     for y, row in enumerate(ROOM.tiles):
         for x, num in enumerate(row):
-            if num == 3:
-                return x, y
+            if num == 3: return x, y
 
 player_x, player_y = findSpawn()
 spawn_x = player_x * TILE
@@ -107,7 +138,7 @@ def updateCoins(amount, ny, nx):
     global COINS, ROOM
     COINS += amount
     ROOM.tiles[ny][nx] = 0
-    coinsCounter["text"] = COINS
+    COIN_COUNTER["text"] = COINS
 
 def movePlayer(dx, dy):
     global player_x, player_y
@@ -148,18 +179,52 @@ camera_target_x = camera_x
 camera_target_y = camera_y
 
 # ---COIN COUNTER---
-coinDisplay = tk.Frame(app, bd=0, bg=canvas["bg"])
-coinsCounter = tk.Label(coinDisplay, text="0", font=("Fixedsys", 75, "bold"), fg="white", bd=0, bg=coinDisplay["bg"])
-coinsCounter.grid(row=0, column=0, padx=20)
+COIN_DISPLAY = None
+COIN_COUNTER = None
+def placeCoinCounter():
+    global COIN_COUNTER, COIN_DISPLAY
+    coinDisplay = tk.Frame(app, bd=0, bg=canvas["bg"])
+    coinDisplay.place(relx=1.0, rely=0.0, anchor="ne", x=-20, y=20)
+    coinsCounter = tk.Label(coinDisplay, text="0", font=("Fixedsys", 75, "bold"), fg="white", bd=0, bg=coinDisplay["bg"])
+    coinsCounter.grid(row=0, column=0, padx=20)
+    COIN_COUNTER = coinsCounter
+    img_raw = Image.open("images/coins.png").resize((150, 150), Image.LANCZOS)
+    coinsImgTk = ImageTk.PhotoImage(img_raw)
+    coinsImgLabel = tk.Label(coinDisplay, image=coinsImgTk, bd=0, bg=coinDisplay["bg"])
+    coinsImgLabel.image = coinsImgTk
+    coinsImgLabel.grid(row=0, column=1)
 
-coinsImg = Image.open("images/coins.png").convert("RGBA")
-coinsImgTk = ImageTk.PhotoImage(coinsImg)
-coinsImgLabel = tk.Label(coinDisplay, image=coinsImgTk, bd=0, bg=coinDisplay["bg"])
-coinsImgLabel.grid(row=0, column=1)
+def killCoinCounter():
+    global COIN_COUNTER, COIN_DISPLAY
+    if COIN_DISPLAY:
+        COIN_DISPLAY.destroy()
+        COIN_DISPLAY = None
+        COIN_COUNTER = None
+
+RESTART_BTN = None
+def placeRestartBtn():
+    global RESTART_BTN
+    img_raw = Image.open("images/restart.png").resize((100, 100), Image.LANCZOS)
+    ImgTk = ImageTk.PhotoImage(img_raw)
+    button = tk.Label(app, bg=canvas["bg"], cursor="hand2", image=ImgTk, bd=0)
+    button.image = ImgTk
+    button.place(relx=0, rely=1, anchor="sw", x=50, y=-50)
+    button.bind("<Button-1>", lambda e: takeDamage(10) )
+    RESTART_BTN = button
+
+def killRestartBtn():
+    global RESTART_BTN
+    if RESTART_BTN:
+        RESTART_BTN.destroy()
+        RESTART_BTN = None
 
 def startGame():
     changeMusic("music/Game.mp3")
-    coinDisplay.place(relx=1.0, rely=0.0, anchor="ne", x=-20, y=20)
+    placeCoinCounter()
+    placeRestartBtn()
+    tk.Button(app, text="Take 1 dmg", command=lambda: takeDamage(1)).pack()
+    tk.Button(app, text="Take 3 dmg", command=lambda: takeDamage(3)).pack()
+    applyBuffs()
     draw()
     game_loop()
 
@@ -173,7 +238,7 @@ buyablesData = [
         "id": "demolisher",
     },
     {
-        "name": "Extra Health",
+        "name": "Extra Hearts",
         "desc": "Gain 3 extra hearts. Use the fountain to gain lost hearts.",
         "image": Image.open("images/hearts.png"),
         "price": 20,
@@ -212,9 +277,9 @@ class Buyable(tk.Frame):
         self.innerCon.bind("<Leave>", self.onUnhover)
         self.innerCon.bind("<Button-1>", self.buying)
 
-        self.display = tk.Label(self.innerCon, image=self.image, bd=0, bg=coinDisplay["bg"])
+        self.display = tk.Label(self.innerCon, image=self.image, bd=0, bg=canvas["bg"])
         self.display.grid(row=0, column=0)
-        self.name = tk.Label(self.innerCon, text=self.name, font=("Fixedsys", 30), fg="white", bd=0, bg=coinDisplay["bg"])
+        self.name = tk.Label(self.innerCon, text=self.name, font=("Fixedsys", 30), fg="white", bd=0, bg=canvas["bg"])
         self.name.grid(row=1, column=0)
 
     def buying(self, event):
@@ -250,14 +315,88 @@ class Buyable(tk.Frame):
             self.tooltipDesc = None
             self.tooltipPrice = None
 
+def characterDeath():
+    #sfx
+    def final_func():
+        canvas.delete("all")
+        killCoinCounter()
+        killRestartBtn()
+        transition("restart")
+    app.after(500, final_func)
+
+def takeDamage(damage):
+    if BOUGHT_UPGRADES["superHearts"]:
+        stillLeft = SUPER_HEART_CANISTER.checkForDmg(damage)
+        if stillLeft != 0:
+            stillLeft = HEART_CANISTER.checkForDmg(stillLeft)
+            if stillLeft != 0: characterDeath()
+    else:
+        stillLeft = HEART_CANISTER.checkForDmg(damage)
+        if stillLeft != 0: characterDeath()
+    if HEALTH <= 0: characterDeath()
+
+class heartCanister(tk.Frame):
+    def __init__(self, master, amount=1, superCanister=False):
+        super().__init__(master, bd=0, bg=canvas["bg"], height=100)
+        offset = 20
+        if superCanister: offset = 140
+        self.place(relx=0.0, rely=0.0, x=20, y=offset)
+        self.grid_rowconfigure((0), weight=1)
+        self.grid_columnconfigure(list(range(amount)), weight=1)
+
+        self.amount = amount
+        self.superCanister = superCanister
+        self.heartImage = ImageTk.PhotoImage(Image.open("images/heart.png").resize((100, 100), Image.LANCZOS))
+        if self.superCanister: self.heartImage = ImageTk.PhotoImage(Image.open("images/goldenHeart.png").resize((100, 100), Image.LANCZOS))
+        self.emptyHeartImage = ImageTk.PhotoImage(Image.open("images/emptyHeart.png").resize((100, 100), Image.LANCZOS))
+        self.heartsList = []
+
+        self.placeHearts()
+    
+    def placeHearts(self):
+        for i in range(self.amount):
+            heartLabel = tk.Label(self, image=self.heartImage, bd=0, bg=self["bg"])
+            heartLabel.imageObj = self.heartImage
+            heartLabel.grid(row=0, column=i, padx=5)
+            self.heartsList.append(heartLabel)
+    
+    def checkForDmg(self, damage):
+        global HEALTH
+        stillLeft = damage
+        
+        for i in range(len(self.heartsList) - 1, -1, -1):
+            if stillLeft <= 0: break
+            current_heart = self.heartsList[i]
+            if current_heart.imageObj != self.emptyHeartImage:
+                current_heart.config(image=self.emptyHeartImage)
+                current_heart.imageObj = self.emptyHeartImage
+                HEALTH -= 1
+                stillLeft -= 1
+        return stillLeft
+
+
+def applyBuffs():
+    global HEART_CANISTER, SUPER_HEART_CANISTER, HEALTH
+    if BOUGHT_UPGRADES["healthBoost"]:
+        HEALTH = 4
+        HEART_CANISTER = heartCanister(app, 4)
+    else: HEART_CANISTER = heartCanister(app)
+    if BOUGHT_UPGRADES["superHearts"]:
+        HEALTH += 2
+        SUPER_HEART_CANISTER = heartCanister(app, 2, True)
+
+
 def openShop():
-    global GOLD
+    global GOLD, COINS
     changeMusic("music/Shop.mp3")
-    if COINS >= 10: GOLD = math.floor(COINS/10)
+    if COINS >= 10:
+        GOLD = math.floor(COINS/10)
+        COINS = 0
+
     def closeShop():
+        transition("game")
         shopCon.destroy()
         goldDisplay.destroy()
-        startGame()
     
     shopCon = tk.Frame(app, bg=canvas["bg"], bd=0)
     shopCon.place(x=0, y=0, relheight=1, relwidth=1)
@@ -345,8 +484,8 @@ class SaveButton(tk.Frame):
     def choseSaveFile(self, event):
         self.applySaveFile()
         menuCon.destroy()
-        if self.gold > 0: openShop()
-        else: startGame()
+        if self.gold > 0: transition("shop")
+        else: transition("game")
 
 def play():
     playBtn.destroy()
