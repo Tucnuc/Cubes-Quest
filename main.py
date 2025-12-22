@@ -1,12 +1,13 @@
 import generateLevel, json, pygame, math
 import tkinter as tk
+from tkinter import colorchooser
 from PIL import Image, ImageTk
 pygame.mixer.init()
 
 # ---STATS---
 ROOMS_CLEARED = 0
 PLAYER_COLOR = "#7e07f4"
-HEALTH = 1
+SAVE_SLOT = 0
 HEART_CANISTER = None
 SUPER_HEART_CANISTER = None
 COINS = 0
@@ -45,12 +46,19 @@ def transition(location):
     loadingMsg["text"] = msg
 
     def finish_transition():
-        canAnimate = False
         backdrop.destroy()
         if next_func:
             next_func()
 
     app.after(1500, finish_transition)
+
+def saveStat(stat, value, subStat=None):
+    with open("saveFiles.json", "r", encoding="utf-8") as f: 
+        data = json.load(f)
+    if subStat: data[str(SAVE_SLOT)][stat][subStat] = value
+    else: data[str(SAVE_SLOT)][stat] = value
+    with open("saveFiles.json", "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4)
 
 def findSpawn():
     for y, row in enumerate(ROOM.tiles):
@@ -107,6 +115,7 @@ def draw():
                 canvas.create_rectangle(sx+4,sy+4,sx+TILE-4,sy+TILE-4,fill=lighten(PLAYER_COLOR))
             if num==4: canvas.create_oval(sx+4,sy+4,sx+TILE-4,sy+TILE-4,fill="#fff202") # COINS
             if num==5: canvas.create_oval(sx+4,sy+4,sx+TILE-4,sy+TILE-4,fill="#0ff3ef") # SUPER COINS
+            if num==11: canvas.create_oval(sx+4,sy+4,sx+TILE-4,sy+TILE-4,fill="#0ff385") # HEALING FOUNTAIN
 
             if num==6: canvas.create_rectangle(sx,sy,sx+TILE,sy+TILE,fill="#97cdff") # NORMAL DOORS
             if num==7: canvas.create_rectangle(sx,sy,sx+TILE,sy+TILE,fill="#f3980f") # DANGER DOORS
@@ -150,6 +159,7 @@ def movePlayer(dx, dy):
     if tileNumber == 1 or tileNumber == 2: return # WALLS
     if tileNumber == 4: updateCoins(1, ny, nx) # COINS
     if tileNumber == 5: updateCoins(3, ny, nx) # SUPER COINS
+    if tileNumber == 11: healPlayer(10) # HEALING FOUNTAIN
     if 6 <= tileNumber <= 10: # DOORS
         load_room(tileNumber)
         return
@@ -224,6 +234,8 @@ def startGame():
     placeRestartBtn()
     tk.Button(app, text="Take 1 dmg", command=lambda: takeDamage(1)).pack()
     tk.Button(app, text="Take 3 dmg", command=lambda: takeDamage(3)).pack()
+    tk.Button(app, text="Heal 1 dmg", command=lambda: healPlayer(1)).pack()
+    tk.Button(app, text="Heal 3 dmg", command=lambda: healPlayer(3)).pack()
     applyBuffs()
     draw()
     game_loop()
@@ -290,6 +302,8 @@ class Buyable(tk.Frame):
         BOUGHT_UPGRADES[buyablesData[self.id]["id"]] = True
         if self.tooltipPrice: self.priceLabel["text"] = "Owned"
         self.goldDisplay["text"] = GOLD
+        saveStat("gold", GOLD)
+        saveStat("boughtUpgrades", True, buyablesData[self.id]["id"])
 
     def onHover(self, event):
         if self.tooltipDesc and self.tooltipPrice: return
@@ -316,7 +330,6 @@ class Buyable(tk.Frame):
             self.tooltipPrice = None
 
 def characterDeath():
-    #sfx
     def final_func():
         canvas.delete("all")
         killCoinCounter()
@@ -327,13 +340,17 @@ def characterDeath():
 def takeDamage(damage):
     if BOUGHT_UPGRADES["superHearts"]:
         stillLeft = SUPER_HEART_CANISTER.checkForDmg(damage)
-        if stillLeft != 0:
-            stillLeft = HEART_CANISTER.checkForDmg(stillLeft)
-            if stillLeft != 0: characterDeath()
+        if stillLeft > 0: stillLeft = HEART_CANISTER.checkForDmg(stillLeft)
+        if (not SUPER_HEART_CANISTER.hasHearts() and not HEART_CANISTER.hasHearts()): characterDeath()
     else:
         stillLeft = HEART_CANISTER.checkForDmg(damage)
-        if stillLeft != 0: characterDeath()
-    if HEALTH <= 0: characterDeath()
+        if not HEART_CANISTER.hasHearts(): characterDeath()
+
+def healPlayer(amount):
+    if BOUGHT_UPGRADES["superHearts"]:
+        stillLeft = HEART_CANISTER.heal(amount)
+        if stillLeft > 0: SUPER_HEART_CANISTER.heal(stillLeft)
+    else: HEART_CANISTER.heal(amount)
 
 class heartCanister(tk.Frame):
     def __init__(self, master, amount=1, superCanister=False):
@@ -361,30 +378,40 @@ class heartCanister(tk.Frame):
             self.heartsList.append(heartLabel)
     
     def checkForDmg(self, damage):
-        global HEALTH
         stillLeft = damage
-        
         for i in range(len(self.heartsList) - 1, -1, -1):
             if stillLeft <= 0: break
             current_heart = self.heartsList[i]
             if current_heart.imageObj != self.emptyHeartImage:
                 current_heart.config(image=self.emptyHeartImage)
                 current_heart.imageObj = self.emptyHeartImage
-                HEALTH -= 1
                 stillLeft -= 1
         return stillLeft
 
+    def hasHearts(self):
+        for label in self.heartsList:
+            if label.imageObj != self.emptyHeartImage: return True
+        return False
+    
+    def heal(self, amount):
+        wholeLength = len(self.heartsList)
+        stillLeft = amount
+        for i in range(wholeLength):
+            if stillLeft == 0: break
+            label = self.heartsList[i]
+            if label.imageObj != self.emptyHeartImage: continue
+            label.config(image=self.heartImage)
+            label.imageObj = self.heartImage
+            stillLeft -= 1
+        return stillLeft
 
 def applyBuffs():
-    global HEART_CANISTER, SUPER_HEART_CANISTER, HEALTH
+    global HEART_CANISTER, SUPER_HEART_CANISTER
     if BOUGHT_UPGRADES["healthBoost"]:
-        HEALTH = 4
         HEART_CANISTER = heartCanister(app, 4)
     else: HEART_CANISTER = heartCanister(app)
     if BOUGHT_UPGRADES["superHearts"]:
-        HEALTH += 2
         SUPER_HEART_CANISTER = heartCanister(app, 2, True)
-
 
 def openShop():
     global GOLD, COINS
@@ -392,6 +419,7 @@ def openShop():
     if COINS >= 10:
         GOLD = math.floor(COINS/10)
         COINS = 0
+        saveStat("gold", GOLD)
 
     def closeShop():
         transition("game")
@@ -478,10 +506,19 @@ class SaveButton(tk.Frame):
         with open("saveFiles.json", "r", encoding="utf-8") as f: 
             data = json.load(f)
         self.gold = data[str(self.id)]["gold"]
+        self.empty = data[str(self.id)]["empty"]
         if data[str(self.id)]["playerColor"] == "default": return
         else: self.player_color = data[str(self.id)]["playerColor"]
 
     def choseSaveFile(self, event):
+        global SAVE_SLOT
+        SAVE_SLOT = self.id
+        if self.empty:
+            chosenColor = colorchooser.askcolor(title ="Choose player color")
+            if chosenColor and chosenColor[1]:
+                hex_color = chosenColor[1]
+                saveStat("empty", False)
+                saveStat("playerColor", hex_color)
         self.applySaveFile()
         menuCon.destroy()
         if self.gold > 0: transition("shop")

@@ -17,6 +17,7 @@ BARRICADE = 2
 SPAWN = 3
 COIN = 4
 SUPER_COIN = 5
+HEALING_FOUNTAIN = 11
 # DOORS
 NORMAL_DOOR = 6
 DANGER_DOOR = 7
@@ -31,7 +32,8 @@ class Room:
         self.tiles = []
         self.coins = random.randint(0, 2)
         self.superCoins = 0
-    
+        self.fountains = 0
+
     def generateRoom(self, doorType, roomsCleared):
         self.tiles = [
             [FLOOR for _ in range(self.width)]
@@ -107,6 +109,7 @@ class Room:
         if doorType == TREASURE_DOOR:
             self.coins += 4
             self.superCoins += random.randint(2,3)
+        if doorType == HEALING_DOOR: self.fountains = 1
 
         def placeCoins(coinAmount, coinType):
             placed = 0
@@ -118,6 +121,7 @@ class Room:
                     placed += 1
         placeCoins(self.coins, COIN)
         placeCoins(self.superCoins, SUPER_COIN)
+        placeCoins(self.fountains, HEALING_FOUNTAIN)
 
     def placeDoors(self, roomsCleared):
         def doorWeights(progress):

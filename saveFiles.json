@@ -1,21 +1,23 @@
 {
     "0": {
-        "gold": 100,
+        "gold": 15,
         "boughtUpgrades": {
             "demolisher": false,
-            "healthBoost": false,
-            "superHearts": false
+            "healthBoost": true,
+            "superHearts": true
         },
-        "playerColor": "#0782f4"
+        "playerColor": "#6b5fe2",
+        "empty": false
     },
     "1": {
-        "gold": 0,
+        "gold": 1,
         "boughtUpgrades": {
             "demolisher": false,
             "healthBoost": false,
             "superHearts": false
         },
-        "playerColor": "default"
+        "playerColor": "#00ff80",
+        "empty": false
     },
     "2": {
         "gold": 0,
@@ -24,6 +26,7 @@
             "healthBoost": false,
             "superHearts": false
         },
-        "playerColor": "default"
+        "playerColor": "default",
+        "empty": true
     }
 }
