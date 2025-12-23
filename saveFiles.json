@@ -1,8 +1,8 @@
 {
     "0": {
-        "gold": 15,
+        "gold": 38,
         "boughtUpgrades": {
-            "demolisher": false,
+            "demolisher": true,
             "healthBoost": true,
             "superHearts": true
         },
@@ -10,9 +10,9 @@
         "empty": false
     },
     "1": {
-        "gold": 1,
+        "gold": 0,
         "boughtUpgrades": {
-            "demolisher": false,
+            "demolisher": true,
             "healthBoost": false,
             "superHearts": false
         },

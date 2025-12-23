@@ -15,7 +15,22 @@ GOLD = 0
 BOUGHT_UPGRADES = {}
 TILE = 50
 CAMERA_SPEED = 0.15
+GAME_LOOP_STARTED = False
 ROOM = generateLevel.getRoom(6, ROOMS_CLEARED)
+
+SFX_LIBRARY = {
+    "button": pygame.mixer.Sound("sounds/button.mp3"),
+    "coin": pygame.mixer.Sound("sounds/tier0.mp3"),
+    "superCoin": pygame.mixer.Sound("sounds/tier1.mp3"),
+    "heal": pygame.mixer.Sound("sounds/tier2.mp3"),
+    "buy": pygame.mixer.Sound("sounds/purchase.mp3"),
+    "denied": pygame.mixer.Sound("sounds/denied.mp3"),
+    "demolish": pygame.mixer.Sound("sounds/demolish.mp3"),
+    #"hit": pygame.mixer.Sound("sounds/hit.wav")
+}
+for sound in SFX_LIBRARY.values(): sound.set_volume(0.35)
+def playSound(name):
+    if name in SFX_LIBRARY: SFX_LIBRARY[name].play()
 
 app = tk.Tk()
 app.attributes("-fullscreen", True)
@@ -143,11 +158,20 @@ def load_room(doorType):
     camera_target_x = camera_x
     camera_target_y = camera_y
 
-def updateCoins(amount, ny, nx):
-    global COINS, ROOM
+def addCoins(amount):
+    global COINS
     COINS += amount
-    ROOM.tiles[ny][nx] = 0
     COIN_COUNTER["text"] = COINS
+
+def changeTile(number, ny, nx):
+    global ROOM
+    ROOM.tiles[ny][nx] = number
+
+def updateCoins(amount, ny, nx):
+    if amount == 1: playSound("coin")
+    elif amount == 3: playSound("superCoin")
+    changeTile(0, ny, nx)
+    addCoins(amount)
 
 def movePlayer(dx, dy):
     global player_x, player_y
@@ -156,13 +180,22 @@ def movePlayer(dx, dy):
     ny = player_y + dy
     tileNumber = ROOM.tiles[ny][nx]
 
-    if tileNumber == 1 or tileNumber == 2: return # WALLS
+    if tileNumber == 1: return # WALLS
     if tileNumber == 4: updateCoins(1, ny, nx) # COINS
     if tileNumber == 5: updateCoins(3, ny, nx) # SUPER COINS
     if tileNumber == 11: healPlayer(10) # HEALING FOUNTAIN
     if 6 <= tileNumber <= 10: # DOORS
         load_room(tileNumber)
         return
+    
+    if tileNumber == 2: # BARRICADES
+        if DEMOLISHER and DEMOLISHER.status:
+            if COINS >= 3:
+                addCoins(-3)
+                playSound("demolish")
+                changeTile(0, ny, nx)
+            else: return
+        else: return    
 
     player_x = nx
     player_y = ny
@@ -195,6 +228,7 @@ def placeCoinCounter():
     global COIN_COUNTER, COIN_DISPLAY
     coinDisplay = tk.Frame(app, bd=0, bg=canvas["bg"])
     coinDisplay.place(relx=1.0, rely=0.0, anchor="ne", x=-20, y=20)
+    COIN_DISPLAY = coinDisplay
     coinsCounter = tk.Label(coinDisplay, text="0", font=("Fixedsys", 75, "bold"), fg="white", bd=0, bg=coinDisplay["bg"])
     coinsCounter.grid(row=0, column=0, padx=20)
     COIN_COUNTER = coinsCounter
@@ -219,7 +253,7 @@ def placeRestartBtn():
     button = tk.Label(app, bg=canvas["bg"], cursor="hand2", image=ImgTk, bd=0)
     button.image = ImgTk
     button.place(relx=0, rely=1, anchor="sw", x=50, y=-50)
-    button.bind("<Button-1>", lambda e: takeDamage(10) )
+    button.bind("<Button-1>", lambda e: takeDamage(10))
     RESTART_BTN = button
 
 def killRestartBtn():
@@ -229,16 +263,16 @@ def killRestartBtn():
         RESTART_BTN = None
 
 def startGame():
+    global GAME_LOOP_STARTED
     changeMusic("music/Game.mp3")
     placeCoinCounter()
     placeRestartBtn()
-    tk.Button(app, text="Take 1 dmg", command=lambda: takeDamage(1)).pack()
-    tk.Button(app, text="Take 3 dmg", command=lambda: takeDamage(3)).pack()
-    tk.Button(app, text="Heal 1 dmg", command=lambda: healPlayer(1)).pack()
-    tk.Button(app, text="Heal 3 dmg", command=lambda: healPlayer(3)).pack()
     applyBuffs()
     draw()
-    game_loop()
+
+    if not GAME_LOOP_STARTED:
+        game_loop()
+        GAME_LOOP_STARTED = True
 
 # ---SHOP---
 buyablesData = [
@@ -296,7 +330,10 @@ class Buyable(tk.Frame):
 
     def buying(self, event):
         global BOUGHT_UPGRADES, GOLD
-        if self.bought or self.price > GOLD: return
+        if self.bought or self.price > GOLD:
+            playSound("denied")
+            return
+        playSound("buy")
         GOLD -= self.price
         self.bought = True
         BOUGHT_UPGRADES[buyablesData[self.id]["id"]] = True
@@ -329,11 +366,42 @@ class Buyable(tk.Frame):
             self.tooltipDesc = None
             self.tooltipPrice = None
 
+DEMOLISHER = None
+class DemolisherAbility(tk.Frame):
+    def __init__(self, master, name, keybind):
+        super().__init__(master, bd=0, bg=canvas["bg"])
+        self.place(relx=1, rely=1, anchor="se", x=-20, y=-20)
+
+        self.name = name
+        self.keybind = keybind
+        self.status = False
+
+        self.imageNotActive = ImageTk.PhotoImage(Image.open("images/demoDeactive.png").resize((150, 150), Image.LANCZOS))
+        self.imageActive = ImageTk.PhotoImage(Image.open("images/demoActive.png").resize((150, 150), Image.LANCZOS))
+
+        self.label = tk.Label(self, image=self.imageNotActive, bd=0, bg=self["bg"], cursor="hand2")
+        self.label.pack()
+        self.heading = tk.Label(self, text=f"{self.name} ({self.keybind.upper()})", font=("Fixedsys", 15), fg="white", bg=self["bg"], bd=0)
+        self.heading.pack(pady=10)
+
+        app.bind(keybind, self.switch)
+        self.label.bind("<Button-1>", self.switch)
+    
+    def switch(self, event):
+        if self.status: self.label.config(image=self.imageNotActive)
+        else: self.label.config(image=self.imageActive)
+        self.status = not self.status
+
+    def deleteButton(self): self.destroy()
+
 def characterDeath():
     def final_func():
+        global DEMOLISHER
         canvas.delete("all")
         killCoinCounter()
         killRestartBtn()
+        if DEMOLISHER: DEMOLISHER.deleteButton()
+        DEMOLISHER = None
         transition("restart")
     app.after(500, final_func)
 
@@ -347,6 +415,7 @@ def takeDamage(damage):
         if not HEART_CANISTER.hasHearts(): characterDeath()
 
 def healPlayer(amount):
+    playSound("heal")
     if BOUGHT_UPGRADES["superHearts"]:
         stillLeft = HEART_CANISTER.heal(amount)
         if stillLeft > 0: SUPER_HEART_CANISTER.heal(stillLeft)
@@ -406,22 +475,25 @@ class heartCanister(tk.Frame):
         return stillLeft
 
 def applyBuffs():
-    global HEART_CANISTER, SUPER_HEART_CANISTER
+    global HEART_CANISTER, SUPER_HEART_CANISTER, DEMOLISHER
     if BOUGHT_UPGRADES["healthBoost"]:
         HEART_CANISTER = heartCanister(app, 4)
     else: HEART_CANISTER = heartCanister(app)
     if BOUGHT_UPGRADES["superHearts"]:
         SUPER_HEART_CANISTER = heartCanister(app, 2, True)
+    if BOUGHT_UPGRADES["demolisher"]: DEMOLISHER = DemolisherAbility(app, "Demolisher", "e")
 
 def openShop():
     global GOLD, COINS
     changeMusic("music/Shop.mp3")
     if COINS >= 10:
-        GOLD = math.floor(COINS/10)
+        GOLD += math.floor(COINS/10)
         COINS = 0
         saveStat("gold", GOLD)
+    else: COINS = 0
 
     def closeShop():
+        playSound("button")
         transition("game")
         shopCon.destroy()
         goldDisplay.destroy()
@@ -462,7 +534,7 @@ menuCon.rowconfigure((0,1,2,3), weight=1)
 menuCon.columnconfigure((0), weight=1)
 menuCon.grid_propagate(False)
 
-gameTitle = tk.Label(menuCon, text="Polygon Quest", font=("Fixedsys", 75, "bold"), fg="white", bd=0, bg=canvas["bg"])
+gameTitle = tk.Label(menuCon, text="CUBE'S QUEST", font=("Fixedsys", 75, "bold"), fg="white", bd=0, bg=canvas["bg"])
 gameTitle.place(y=80, relwidth=1)
 
 class SaveButton(tk.Frame):
@@ -513,6 +585,7 @@ class SaveButton(tk.Frame):
     def choseSaveFile(self, event):
         global SAVE_SLOT
         SAVE_SLOT = self.id
+        playSound("button")
         if self.empty:
             chosenColor = colorchooser.askcolor(title ="Choose player color")
             if chosenColor and chosenColor[1]:
@@ -526,6 +599,8 @@ class SaveButton(tk.Frame):
 
 def play():
     playBtn.destroy()
+    infoBtn.destroy()
+    playSound("button")
     savingBtnsCon = tk.Frame(menuCon, bg=canvas["bg"])
     savingBtnsCon.rowconfigure((0,1,2), weight=1)
     savingBtnsCon.columnconfigure((0), weight=1)
@@ -533,8 +608,28 @@ def play():
     savingBtnsCon.grid(row=1, column=0, rowspan=3, sticky="nsew")
     for i in range(3): SaveButton(savingBtnsCon, i)
 
+def openControls():
+    playSound("button")
+    controlsCon = tk.Frame(menuCon, bg=canvas["bg"])
+    controlsCon.rowconfigure((0,1,2), weight=1)
+    controlsCon.columnconfigure((0), weight=1)
+    controlsCon.grid_propagate(False)
+    controlsCon.grid(row=1, column=0, rowspan=3, sticky="nsew")
+    textCon = tk.Frame(controlsCon, bg=canvas["bg"])
+    textCon.grid(row=0, column=0, rowspan=2)
+    tk.Label(textCon, text="Use arrow keys to move", font=("Fixedsys", 30), fg="white", bg=controlsCon["bg"], bd=0).pack(pady=5)
+    tk.Label(textCon, text="Get coins to buy upgrades in the shop", font=("Fixedsys", 30), fg="white", bg=controlsCon["bg"], bd=0).pack(pady=5)
+    tk.Label(textCon, text="Press E to enable the demolisher ability", font=("Fixedsys", 30), fg="white", bg=controlsCon["bg"], bd=0).pack(pady=5)
+    tk.Label(textCon, text="Differently colored squares in walls transport you to new rooms", font=("Fixedsys", 30), fg="white", bg=controlsCon["bg"], bd=0).pack(pady=5)
+    def closeControls():
+        playSound("button")
+        controlsCon.destroy()
+    tk.Button(controlsCon, text="Back", font=("Fixedsys", 50, "bold"), bd=0, width=10, command=closeControls, cursor="hand2").grid(row=2, column=0)
+
 playBtn = tk.Button(menuCon, text="Play", font=("Fixedsys", 50, "bold"), bd=0, width=10, command=play, cursor="hand2")
 playBtn.grid(row=1, column=0, rowspan=2)
+infoBtn = tk.Button(menuCon, text="Controls", font=("Fixedsys", 50, "bold"), bd=0, width=10, command=openControls, cursor="hand2")
+infoBtn.grid(row=2, column=0, rowspan=2)
 
 def changeMusic(path):
     pygame.mixer.music.load(path)
