@@ -24,6 +24,10 @@ DANGER_DOOR = 7
 BOSS_DOOR = 8
 TREASURE_DOOR = 9
 HEALING_DOOR = 10
+# ENEMIES
+ENEMY_SQUARE = 12
+ENEMY_TRIANGLE = 13
+ENEMY_HEXAGON = 14
 
 class Room:
     def __init__(self):
@@ -51,6 +55,7 @@ class Room:
         self.placeSpawn()
         self.placeCoins(doorType)
         self.placeDoors(roomsCleared)
+        self.placeEnemies(doorType, roomsCleared)
 
     def placeBarricades(self, roomsCleared):
         baseMin = 3
@@ -172,6 +177,30 @@ class Room:
 
             self.tiles[y][x] = randomDoorType(roomsCleared)
             placed += 1
+
+    def placeEnemies(self, doorType, roomsCleared):
+        prog = difficultyProgress(roomsCleared)
+        amount = int(random.randint(1, 3) * (1 + prog))
+        if doorType == 8: self.spawnEnemyAtRandom(ENEMY_HEXAGON)
+        if doorType in [7,8]:
+            for _ in range(amount):
+                etype = ENEMY_SQUARE if random.random() > 0.3 else ENEMY_TRIANGLE
+                self.spawnEnemyAtRandom(etype)
+
+    def spawnEnemyAtRandom(self, etype):
+        tries = 0
+        while tries < 50:
+            x = random.randint(2, self.width-3)
+            y = random.randint(2, self.height-3)
+            # Boss 2x2 potřebuje víc místa
+            if etype == ENEMY_HEXAGON:
+                if all(self.tiles[y+dy][x+dx] == FLOOR for dy in range(2) for dx in range(2)):
+                    self.tiles[y][x] = etype
+                    break
+            elif self.tiles[y][x] == FLOOR:
+                self.tiles[y][x] = etype
+                break
+            tries += 1
 
 def difficultyProgress(roomsCleared):
     return min(roomsCleared / PEAK, 1.0)

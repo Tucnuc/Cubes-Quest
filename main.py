@@ -2,6 +2,8 @@ import generateLevel, json, pygame, math
 import tkinter as tk
 from tkinter import colorchooser
 from PIL import Image, ImageTk
+
+pygame.init()
 pygame.mixer.init()
 
 # ---STATS---
@@ -17,16 +19,24 @@ TILE = 50
 CAMERA_SPEED = 0.15
 GAME_LOOP_STARTED = False
 ROOM = generateLevel.getRoom(6, ROOMS_CLEARED)
+LAST_DAMAGE_TIME = 0
+DAMAGE_COOLDOWN = 1000
+CANT_MOVE = False
+LAST_SUPER_REGEN_TIME = pygame.time.get_ticks()
+SUPER_REGEN_INTERVAL = 15000
 
 SFX_LIBRARY = {
     "button": pygame.mixer.Sound("sounds/button.mp3"),
     "coin": pygame.mixer.Sound("sounds/tier0.mp3"),
     "superCoin": pygame.mixer.Sound("sounds/tier1.mp3"),
-    "heal": pygame.mixer.Sound("sounds/tier2.mp3"),
+    "smallHeal": pygame.mixer.Sound("sounds/smallHeal.mp3"),
+    "heal": pygame.mixer.Sound("sounds/heal.mp3"),
     "buy": pygame.mixer.Sound("sounds/purchase.mp3"),
     "denied": pygame.mixer.Sound("sounds/denied.mp3"),
     "demolish": pygame.mixer.Sound("sounds/demolish.mp3"),
-    #"hit": pygame.mixer.Sound("sounds/hit.wav")
+    "hit": pygame.mixer.Sound("sounds/hit.mp3"),
+    "hitBig": pygame.mixer.Sound("sounds/hitBig.mp3"),
+    "gameover": pygame.mixer.Sound("sounds/gameover.mp3")
 }
 for sound in SFX_LIBRARY.values(): sound.set_volume(0.35)
 def playSound(name):
@@ -55,7 +65,7 @@ def transition(location):
         msg = "Travelling to the bazaar..."
         next_func = openShop
     elif location == "restart":
-        msg = "All the way back to the beginning..."
+        msg = "Back to the beginning..."
         next_func = openShop
 
     loadingMsg["text"] = msg
@@ -113,6 +123,69 @@ def lighten(hex_color, amount=0.5):
 
     return f"#{r:02x}{g:02x}{b:02x}"
 
+class Enemy:
+    def __init__(self, x, y, etype):
+        self.x = x
+        self.y = y
+        self.type = etype
+        self.last_move = pygame.time.get_ticks()
+        if etype == 14: self.speed = 800
+        elif etype == 13: self.speed = 300
+        else: self.speed = 500
+
+enemies_in_room = []
+
+def get_distance(x1, y1, x2, y2):
+    return math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+
+def update_enemies():
+    global player_x, player_y, enemies_in_room
+    now = pygame.time.get_ticks()
+
+    for en in enemies_in_room:
+        if now - en.last_move < en.speed:
+            continue
+        
+        en.last_move = now
+
+        if en.type == 14: # ---2x2 BOSS---
+            dx, dy = 0, 0
+            if player_x > en.x: dx = 1
+            elif player_x < en.x: dx = -1
+            if player_y > en.y: dy = 1
+            elif player_y < en.y: dy = -1
+            
+            new_x = en.x + dx
+            if 1 <= new_x <= ROOM.width - 3:
+                en.x = new_x
+            new_y = en.y + dy
+            if 1 <= new_y <= ROOM.height - 3:
+                en.y = new_y
+            
+            for ry in range(en.y, en.y + 2):
+                for rx in range(en.x, en.x + 2):
+                    if ROOM.tiles[ry][rx] == 2:
+                        ROOM.tiles[ry][rx] = 0
+                        playSound("demolish")
+
+        else: # ---1x1 ENEMIES---
+            possible_moves = []
+            for mx, my in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                nx, ny = en.x + mx, en.y + my
+                if 0 <= nx < ROOM.width and 0 <= ny < ROOM.height:
+                    if ROOM.tiles[ny][nx] in [0, 3]:
+                        dist = get_distance(nx, ny, player_x, player_y)
+                        possible_moves.append((dist, nx, ny))
+            if possible_moves:
+                possible_moves.sort() 
+                best_dist, best_x, best_y = possible_moves[0]
+                en.x, en.y = best_x, best_y
+
+        if en.type == 14:
+            if en.x <= player_x <= en.x + 1 and en.y <= player_y <= en.y + 1: takeDamage(2)
+        else:
+            if en.x == player_x and en.y == player_y: takeDamage(1)
+
 def draw():
     global spawn_x, spawn_y
     canvas.delete("all")
@@ -138,12 +211,22 @@ def draw():
             if num==9: canvas.create_rectangle(sx,sy,sx+TILE,sy+TILE,fill="#fff202") # TREASURE DOORS
             if num==10: canvas.create_rectangle(sx,sy,sx+TILE,sy+TILE,fill="#07f43a") # HEALING DOORS
 
+    for en in enemies_in_room:
+        ex = en.x * TILE - camera_x
+        ey = en.y * TILE - camera_y
+        if en.type == 14:
+            canvas.create_oval(ex+5, ey+5, ex+(TILE*2)-5, ey+(TILE*2)-5, fill="#39087a", outline="white", width=3)
+        elif en.type == 12:
+            canvas.create_rectangle(ex+6, ey+6, ex+TILE-6, ey+TILE-6, fill="#ff0000")
+        elif en.type == 13:
+            canvas.create_polygon(ex+TILE//2, ey+6, ex+6, ey+TILE-6, ex+TILE-6, ey+TILE-6, fill="#0AA147")
+
     px = player_x*TILE - camera_x
     py = player_y*TILE - camera_y
     canvas.create_rectangle(px+4, py+4, px+TILE-4, py+TILE-4, fill=PLAYER_COLOR)
 
 def load_room(doorType):
-    global ROOM, ROOMS_CLEARED, player_x, player_y
+    global ROOM, ROOMS_CLEARED, player_x, player_y, enemies_in_room
     global camera_x, camera_y, camera_target_x, camera_target_y
 
     ROOMS_CLEARED += 1
@@ -157,6 +240,13 @@ def load_room(doorType):
     camera_y = player_y * TILE - app.winfo_height() // 2
     camera_target_x = camera_x
     camera_target_y = camera_y
+
+    enemies_in_room = []
+    for y, row in enumerate(ROOM.tiles):
+        for x, tile in enumerate(row):
+            if tile in [12, 13, 14]:
+                enemies_in_room.append(Enemy(x, y, tile))
+                ROOM.tiles[y][x] = 0
 
 def addCoins(amount):
     global COINS
@@ -175,6 +265,8 @@ def updateCoins(amount, ny, nx):
 
 def movePlayer(dx, dy):
     global player_x, player_y
+
+    if CANT_MOVE: return
 
     nx = player_x + dx
     ny = player_y + dy
@@ -211,7 +303,9 @@ def close(event):
 app.bind("<Escape>", close)
 
 def game_loop():
+    update_enemies()
     update_camera()
+    handleSuperHeartRegen()
     draw()
     app.after(16, game_loop)
 
@@ -395,18 +489,31 @@ class DemolisherAbility(tk.Frame):
     def deleteButton(self): self.destroy()
 
 def characterDeath():
+    global enemies_in_room, CANT_MOVE
     def final_func():
-        global DEMOLISHER
+        global DEMOLISHER, ROOMS_CLEARED, CANT_MOVE
+        ROOMS_CLEARED = 0
         canvas.delete("all")
         killCoinCounter()
         killRestartBtn()
         if DEMOLISHER: DEMOLISHER.deleteButton()
         DEMOLISHER = None
         transition("restart")
-    app.after(500, final_func)
+        CANT_MOVE = False
+    playSound("gameover")
+    CANT_MOVE = True
+    enemies_in_room = []
+    app.after(2000, final_func)
 
 def takeDamage(damage):
-    if BOUGHT_UPGRADES["superHearts"]:
+    global LAST_DAMAGE_TIME
+    now = pygame.time.get_ticks()
+    if now - LAST_DAMAGE_TIME < DAMAGE_COOLDOWN: return
+
+    LAST_DAMAGE_TIME = now
+    if damage > 1: playSound("hitBig")
+    else: playSound("hit")
+    if BOUGHT_UPGRADES.get("superHearts"):
         stillLeft = SUPER_HEART_CANISTER.checkForDmg(damage)
         if stillLeft > 0: stillLeft = HEART_CANISTER.checkForDmg(stillLeft)
         if (not SUPER_HEART_CANISTER.hasHearts() and not HEART_CANISTER.hasHearts()): characterDeath()
@@ -420,6 +527,17 @@ def healPlayer(amount):
         stillLeft = HEART_CANISTER.heal(amount)
         if stillLeft > 0: SUPER_HEART_CANISTER.heal(stillLeft)
     else: HEART_CANISTER.heal(amount)
+
+def handleSuperHeartRegen():
+    global LAST_SUPER_REGEN_TIME
+    if BOUGHT_UPGRADES.get("superHearts") and SUPER_HEART_CANISTER:
+        now = pygame.time.get_ticks()
+        if now - LAST_SUPER_REGEN_TIME >= SUPER_REGEN_INTERVAL:
+            if not SUPER_HEART_CANISTER.isFull():
+                SUPER_HEART_CANISTER.heal(1)
+                playSound("smallHeal")
+                LAST_SUPER_REGEN_TIME = now
+            else: LAST_SUPER_REGEN_TIME = now
 
 class heartCanister(tk.Frame):
     def __init__(self, master, amount=1, superCanister=False):
@@ -473,6 +591,12 @@ class heartCanister(tk.Frame):
             label.imageObj = self.heartImage
             stillLeft -= 1
         return stillLeft
+    
+    def isFull(self):
+        for label in self.heartsList:
+            if label.imageObj == self.emptyHeartImage:
+                return False
+        return True
 
 def applyBuffs():
     global HEART_CANISTER, SUPER_HEART_CANISTER, DEMOLISHER
