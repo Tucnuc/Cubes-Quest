@@ -1,12 +1,13 @@
+#region IMPORTS
 import generateLevel, json, pygame, math
 import tkinter as tk
 from tkinter import colorchooser
 from PIL import Image, ImageTk
-
 pygame.init()
 pygame.mixer.init()
+#endregion
 
-# ---STATS---
+#region STATS
 ROOMS_CLEARED = 0
 PLAYER_COLOR = "#7e07f4"
 SAVE_SLOT = 0
@@ -24,7 +25,9 @@ DAMAGE_COOLDOWN = 1000
 CANT_MOVE = False
 LAST_SUPER_REGEN_TIME = pygame.time.get_ticks()
 SUPER_REGEN_INTERVAL = 15000
+#endregion
 
+#region SFX, MUSIC
 SFX_LIBRARY = {
     "button": pygame.mixer.Sound("sounds/button.mp3"),
     "coin": pygame.mixer.Sound("sounds/tier0.mp3"),
@@ -38,10 +41,17 @@ SFX_LIBRARY = {
     "hitBig": pygame.mixer.Sound("sounds/hitBig.mp3"),
     "gameover": pygame.mixer.Sound("sounds/gameover.mp3")
 }
+
+def changeMusic(path):
+    pygame.mixer.music.load(path)
+    pygame.mixer.music.play(-1)
+
 for sound in SFX_LIBRARY.values(): sound.set_volume(0.35)
 def playSound(name):
     if name in SFX_LIBRARY: SFX_LIBRARY[name].play()
+#endregion
 
+#region PLAYER #1
 app = tk.Tk()
 app.attributes("-fullscreen", True)
 # app.geometry("1920x1080")
@@ -123,6 +133,7 @@ def lighten(hex_color, amount=0.5):
 
     return f"#{r:02x}{g:02x}{b:02x}"
 
+#region ENEMIES
 class Enemy:
     def __init__(self, x, y, etype):
         self.x = x
@@ -185,7 +196,9 @@ def update_enemies():
             if en.x <= player_x <= en.x + 1 and en.y <= player_y <= en.y + 1: takeDamage(2)
         else:
             if en.x == player_x and en.y == player_y: takeDamage(1)
+#endregion
 
+#region ROOMS
 def draw():
     global spawn_x, spawn_y
     canvas.delete("all")
@@ -247,7 +260,9 @@ def load_room(doorType):
             if tile in [12, 13, 14]:
                 enemies_in_room.append(Enemy(x, y, tile))
                 ROOM.tiles[y][x] = 0
+#endregion
 
+#region PLAYER #2
 def addCoins(amount):
     global COINS
     COINS += amount
@@ -314,8 +329,9 @@ camera_x = player_x * TILE - app.winfo_width() // 2
 camera_y = player_y * TILE - app.winfo_height() // 2
 camera_target_x = camera_x
 camera_target_y = camera_y
+#endregion
 
-# ---COIN COUNTER---
+#region BUTTONS
 COIN_DISPLAY = None
 COIN_COUNTER = None
 def placeCoinCounter():
@@ -355,7 +371,9 @@ def killRestartBtn():
     if RESTART_BTN:
         RESTART_BTN.destroy()
         RESTART_BTN = None
+#endregion
 
+#region STARTGAME
 def startGame():
     global GAME_LOOP_STARTED
     changeMusic("music/Game.mp3")
@@ -367,8 +385,9 @@ def startGame():
     if not GAME_LOOP_STARTED:
         game_loop()
         GAME_LOOP_STARTED = True
+#endreguíon
 
-# ---SHOP---
+#region BUYABLES
 buyablesData = [
     {
         "name": "Demolisher",
@@ -459,7 +478,9 @@ class Buyable(tk.Frame):
             self.tooltipPrice.destroy()
             self.tooltipDesc = None
             self.tooltipPrice = None
+#endregion
 
+#region DEMOLISHER
 DEMOLISHER = None
 class DemolisherAbility(tk.Frame):
     def __init__(self, master, name, keybind):
@@ -487,7 +508,9 @@ class DemolisherAbility(tk.Frame):
         self.status = not self.status
 
     def deleteButton(self): self.destroy()
+#endregion
 
+#region HEALTH
 def characterDeath():
     global enemies_in_room, CANT_MOVE
     def final_func():
@@ -597,7 +620,9 @@ class heartCanister(tk.Frame):
             if label.imageObj == self.emptyHeartImage:
                 return False
         return True
+#endregion
 
+#region SHOP
 def applyBuffs():
     global HEART_CANISTER, SUPER_HEART_CANISTER, DEMOLISHER
     if BOUGHT_UPGRADES["healthBoost"]:
@@ -650,8 +675,9 @@ def openShop():
 
     closeShopBtn = tk.Button(shopCon, text="Continue", font=("Fixedsys", 50, "bold"), bd=0, width=10, command=closeShop, cursor="hand2")
     closeShopBtn.grid(row=3, column=0)
+#endregion
 
-# ---MENU---
+#region MENU
 menuCon = tk.Frame(app, bg=canvas["bg"], bd=0)
 menuCon.place(x=0, y=0, relheight=1, relwidth=1)
 menuCon.rowconfigure((0,1,2,3), weight=1)
@@ -756,11 +782,9 @@ playBtn = tk.Button(menuCon, text="Play", font=("Fixedsys", 50, "bold"), bd=0, w
 playBtn.grid(row=1, column=0, rowspan=2)
 infoBtn = tk.Button(menuCon, text="Controls", font=("Fixedsys", 50, "bold"), bd=0, width=10, command=openControls, cursor="hand2")
 infoBtn.grid(row=2, column=0, rowspan=2)
+#endregion
 
-def changeMusic(path):
-    pygame.mixer.music.load(path)
-    pygame.mixer.music.play(-1)
-
+#region MAINLOOP
 changeMusic("music/Menu.mp3")
 pygame.mixer.music.set_volume(0.7)
 app.mainloop()
