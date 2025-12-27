@@ -132,6 +132,7 @@ def lighten(hex_color, amount=0.5):
     b = int(b + (255 - b) * amount)
 
     return f"#{r:02x}{g:02x}{b:02x}"
+#endregion
 
 #region ENEMIES
 class Enemy:
