@@ -381,14 +381,14 @@ buyablesData = [
         "name": "Extra Hearts",
         "desc": "Gain 3 extra hearts. Use the fountain to gain lost hearts.",
         "image": Image.open("images/hearts.png"),
-        "price": 20,
+        "price": 5,
         "id": "healthBoost",
     },
     {
         "name": "Super Hearts",
-        "desc": "Gain 2 super hearts. Each one regenerates after 30 seconds.",
+        "desc": "Gain 2 super hearts. Each one regenerates after 15 seconds.",
         "image": Image.open("images/goldenHearts.png"),
-        "price": 50,
+        "price": 10,
         "id": "superHearts",
     },
 ]
@@ -745,6 +745,8 @@ def openControls():
     tk.Label(textCon, text="Get coins to buy upgrades in the shop", font=("Fixedsys", 30), fg="white", bg=controlsCon["bg"], bd=0).pack(pady=5)
     tk.Label(textCon, text="Press E to enable the demolisher ability", font=("Fixedsys", 30), fg="white", bg=controlsCon["bg"], bd=0).pack(pady=5)
     tk.Label(textCon, text="Differently colored squares in walls transport you to new rooms", font=("Fixedsys", 30), fg="white", bg=controlsCon["bg"], bd=0).pack(pady=5)
+    tk.Label(textCon, text="Click the button in the down left to restart", font=("Fixedsys", 30), fg="white", bg=controlsCon["bg"], bd=0).pack(pady=5)
+    tk.Label(textCon, text="Once you die/restart, every 10 coins converts to 1 gold", font=("Fixedsys", 30), fg="white", bg=controlsCon["bg"], bd=0).pack(pady=5)
     def closeControls():
         playSound("button")
         controlsCon.destroy()
