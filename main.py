@@ -25,6 +25,7 @@ DAMAGE_COOLDOWN = 1000
 CANT_MOVE = False
 LAST_SUPER_REGEN_TIME = pygame.time.get_ticks()
 SUPER_REGEN_INTERVAL = 15000
+SMALL_SCREEN = False # CHANGE TO TRUE IF YOU HAVE A SMALL LAPTOP SCREEN (~13")
 #endregion
 
 #region SFX, MUSIC
@@ -132,6 +133,7 @@ def lighten(hex_color, amount=0.5):
     b = int(b + (255 - b) * amount)
 
     return f"#{r:02x}{g:02x}{b:02x}"
+#endregion
 
 #region ENEMIES
 class Enemy:
@@ -429,7 +431,6 @@ class Buyable(tk.Frame):
         self.goldDisplay = goldDisplay
 
         self.innerCon = tk.Frame(self, width=300, height=500, bg="black")
-        self.innerCon.grid_rowconfigure((1), weight=1)
         self.innerCon.grid_propagate(False)
         self.innerCon.pack(pady=5)
         self.innerCon.bind("<Enter>", self.onHover)
@@ -437,8 +438,18 @@ class Buyable(tk.Frame):
         self.innerCon.bind("<Button-1>", self.buying)
 
         self.display = tk.Label(self.innerCon, image=self.image, bd=0, bg=canvas["bg"])
-        self.display.grid(row=0, column=0)
         self.name = tk.Label(self.innerCon, text=self.name, font=("Fixedsys", 30), fg="white", bd=0, bg=canvas["bg"])
+
+        if SMALL_SCREEN:
+            self.configure(width=210, height=310)
+            self.innerCon.configure(width=200, height=300)
+            self.image = ImageTk.PhotoImage(buyablesData[self.id]["image"].resize((200, 200), Image.LANCZOS))
+            self.display.configure(image=self.image)
+            self.name.configure(font=("Fixedsys", 20))
+        
+        self.innerCon.grid_rowconfigure((0,1), weight=1)
+        self.innerCon.grid_columnconfigure((0), weight=1)
+        self.display.grid(row=0, column=0)
         self.name.grid(row=1, column=0)
 
     def buying(self, event):
@@ -459,9 +470,14 @@ class Buyable(tk.Frame):
         if self.tooltipDesc and self.tooltipPrice: return
         self.tooltipDesc = tk.Frame(app, bg="black")
         self.tooltipDesc.place(relx=0, rely=0.77)
-        tk.Label(self.tooltipDesc, text=self.desc, fg="white", bg="black",
-            font=("Fixedsys", 25), wraplength=500, justify="left"
-        ).pack(padx=40)
+        if SMALL_SCREEN:
+            tk.Label(self.tooltipDesc, text=self.desc, fg="white", bg="black",
+                font=("Fixedsys", 20), wraplength=400, justify="left"
+            ).pack(padx=40)
+        else:
+            tk.Label(self.tooltipDesc, text=self.desc, fg="white", bg="black",
+                font=("Fixedsys", 25), wraplength=500, justify="left"
+            ).pack(padx=40)
 
         self.tooltipPrice = tk.Frame(app, bg="black")
         self.tooltipPrice.place(relx=1.0, rely=0.82, anchor="ne")
@@ -654,6 +670,7 @@ def openShop():
     shopCon.grid_propagate(False)
 
     shopTitle = tk.Label(shopCon, text="Pentagon's Bazaar", font=("Fixedsys", 75, "bold"), fg="white", bd=0, bg=canvas["bg"])
+    if SMALL_SCREEN: shopTitle.configure(font=("Fixedsys", 60, "bold"))
     shopTitle.place(y=80, relwidth=1)
 
     goldDisplay = tk.Frame(app, bd=0, bg=canvas["bg"])
@@ -667,13 +684,14 @@ def openShop():
     gold_icon_label.grid(row=0, column=1)
 
     buyablesCon = tk.Frame(shopCon, bg=canvas["bg"])
-    buyablesCon.rowconfigure((0,), weight=1)
+    buyablesCon.rowconfigure((0), weight=1)
     buyablesCon.columnconfigure((0,1,2), weight=1)
     buyablesCon.grid_propagate(False)
     buyablesCon.grid(row=1, column=0, rowspan=2, sticky="nsew")
     for i in range(3): Buyable(buyablesCon, i, goldCounter)
 
     closeShopBtn = tk.Button(shopCon, text="Continue", font=("Fixedsys", 50, "bold"), bd=0, width=10, command=closeShop, cursor="hand2")
+    if SMALL_SCREEN: closeShopBtn.configure(font=("Fixedsys", 30, "bold"))
     closeShopBtn.grid(row=3, column=0)
 #endregion
 
