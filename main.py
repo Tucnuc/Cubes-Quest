@@ -387,7 +387,7 @@ def startGame():
     if not GAME_LOOP_STARTED:
         game_loop()
         GAME_LOOP_STARTED = True
-#endreguíon
+#endregion
 
 #region BUYABLES
 buyablesData = [
@@ -806,3 +806,4 @@ infoBtn.grid(row=2, column=0, rowspan=2)
 changeMusic("music/Menu.mp3")
 pygame.mixer.music.set_volume(0.7)
 app.mainloop()
+#endregion
